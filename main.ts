@@ -1,28 +1,74 @@
-// Worst Superpower — make.fun entry (u-suroto-worst-superpower-461dcdbe).
-// One invented superpower, so pointless that naming it is the whole joke:
-// a hero who can find any lost sock, but only once a replacement pair has
-// already been bought. Writes that single line to stdout and to
-// $MAKEFUN_OUTPUT_DIR/entry.txt (default /output/entry.txt). Stdlib only,
-// no network, deterministic on every run.
+// Worst Superpower — make.fun v2 resubmit (u-suroto-worst-superpower-461dcdbe).
+//
+// The joke, restated as data: a "power" is only a power if it lets you do
+// something you could not already do. X-ray vision restricted to glass
+// walls fails that test completely — glass is already transparent — so
+// the ability is worthless, which is exactly what the prompt asks for.
+// The program below assembles that one-liner from its clauses, checks it
+// against the 1-140 character single-line gate, and writes it verbatim
+// to $MAKEFUN_OUTPUT_DIR/entry.txt. Stdlib only, no network, deterministic.
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
-const ENTRY =
-  "I can instantly find any lost sock — but only after its owner has already bought a replacement pair.";
+type GateResult = { ok: true } | { ok: false; reason: string };
 
-// The gate allows 1 to 140 characters on a single line; fail loudly
-// instead of shipping a line the sealed scorer would reject.
-if (
-  ENTRY.length < 1 ||
-  ENTRY.length > 140 ||
-  !ENTRY.trim() ||
-  ENTRY.includes("\n")
-) {
-  throw new Error(`entry is ${ENTRY.length} characters, outside the 1-140 gate`);
+function checkGate(text: string): GateResult {
+  const chars = [...text];
+  if (chars.length === 0) return { ok: false, reason: "entry is empty" };
+  if (chars.length > 140) {
+    return { ok: false, reason: `entry is ${chars.length} chars, over the 140 limit` };
+  }
+  if (text !== text.trim()) {
+    return { ok: false, reason: "entry has leading or trailing whitespace" };
+  }
+  for (const ch of text) {
+    if (ch === "\n" || ch === "\r") {
+      return { ok: false, reason: "entry must be a single line" };
+    }
+  }
+  return { ok: true };
 }
 
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
-mkdirSync(outDir, { recursive: true });
-writeFileSync(join(outDir, "entry.txt"), ENTRY, "utf8"); // exact bytes, no trailing newline
-process.stdout.write(ENTRY + "\n"); // stdout may carry the trailing newline
+function buildEntry(): string {
+  // Clauses in narrative order: claim, restriction, punchline.
+  const clauses: string[] = [
+    "I can see through walls",
+    " — but only walls made of glass,",
+    " which I could already see through.",
+  ];
+  return clauses.reduce((acc, clause) => acc + clause, "");
+}
+
+function resolveOutDir(): string {
+  const raw = process.env.MAKEFUN_OUTPUT_DIR;
+  if (raw !== undefined && raw.length > 0) return raw;
+  return path.resolve("/output");
+}
+
+function main(): void {
+  const entry = buildEntry();
+  const gate = checkGate(entry);
+  if (!gate.ok) {
+    throw new Error(`entry failed the 1-140 gate: ${gate.reason}`);
+  }
+
+  const outDir = resolveOutDir();
+  fs.mkdirSync(outDir, { recursive: true });
+  const target = path.join(outDir, "entry.txt");
+  const payload = Buffer.from(entry, "utf8");
+  const handle = fs.openSync(target, "w");
+  try {
+    fs.writeSync(handle, payload, 0, payload.length, 0);
+  } finally {
+    fs.closeSync(handle);
+  }
+  // Read-back: the file on disk must be byte-identical to the entry.
+  const written = fs.readFileSync(target);
+  if (!written.equals(payload)) {
+    throw new Error("entry.txt on disk does not match the entry text");
+  }
+  process.stdout.write(entry + "\n");
+}
+
+main();
